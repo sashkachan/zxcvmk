@@ -1,0 +1,11 @@
+backupProvider: restic
+backupProviders: 
+  - name: restic
+    snapshotListCommand: ["restic", "snapshots", "--json"]
+    backupRepositoryPasswordLocation: /path/to/restic/passphrase
+    backupRepository: repo-url.example.com
+
+backupTargets:
+- location: /some/volume
+  pre-restore-hook: [ "sudo", "systemctl", "stop", "some-service" ]
+  post-restore-hook: [ "sudo", "systemctl", "start", "some-service" ]
