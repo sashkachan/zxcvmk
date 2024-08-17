@@ -39,6 +39,10 @@ func Execute() {
 	}
 	rootCmd.AddCommand(backupCmd)
 	backupCmd.AddCommand(backupRestore)
+	var snapshotID string
+	var path string
+	backupRestore.Flags().StringVar(&snapshotID, "snapshot-id", "", "Specify the snapshot ID")
+	backupRestore.Flags().StringVar(&path, "path", "", "Specify the path")
 	rootCmd.Execute()
 }
 
