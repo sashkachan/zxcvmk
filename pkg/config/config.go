@@ -1,8 +1,10 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 
+	// "github.com/jedib0t/go-pretty/v6/table"
 	"gopkg.in/yaml.v2"
 )
 
@@ -43,4 +45,29 @@ type BackupProvider struct {
 	SnapshotListCommand              []string `yaml:"snapshotListCommand"`
 	BackupRepositoryPasswordLocation string   `yaml:"backupRepositoryPasswordLocation"`
 	BackupRepository                 string   `yaml:"backupRepository"`
+}
+
+// Output outputs the given data into a supported format
+func Output(data any, output string) (string, error) {
+	switch output {
+	case "json":
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return "", err
+		}
+		return string(jsonData), nil
+
+	case "yaml":
+		yamlData, err := yaml.Marshal(data)
+		if err != nil {
+			return "", err
+		}
+		return string(yamlData), nil
+
+	case "table":
+		// TODO: table export
+		return "", nil
+
+	}
+	return "", nil
 }

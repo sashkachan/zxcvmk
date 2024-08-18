@@ -15,13 +15,17 @@ import (
 //
 //
 
+type BackupArguments struct {
+	SnapshotID string
+	Path       string
+	Output     string
+}
+
 func init() {
 
 }
 
-func Restore(cfg *config.Config) {
-	log.Println("Restore")
-	log.Printf("Current provider: %s", cfg.BackupProvider)
+func setupBackupProvider(cfg *config.Config) providers.BackupProvider {
 	var backupProviderImpl providers.BackupProvider
 	var activeProvider config.BackupProvider
 	for _, provider := range cfg.BackupProviders {
@@ -34,20 +38,35 @@ func Restore(cfg *config.Config) {
 			break
 		}
 	}
-	snapshots, err := backupProviderImpl.ListSnapshots()
+	return backupProviderImpl
+}
+
+func Restore(cfg *config.Config, backupArguments BackupArguments) {
+	backupProviderImpl := setupBackupProvider(cfg)
+	_, err := backupProviderImpl.ListSnapshots()
 	if err != nil {
 		fmt.Printf("Error listing snapshots: %s", err)
 	}
-	fmt.Printf("Snapshots: %d", len(snapshots))
 }
 
 func Mount(cfg *config.Config) {
 	log.Println("Mount")
 }
 
-func Print(cfg *config.Config) {
-	fmt.Println("Current backup targets:")
-	for _, p := range cfg.BackupTargets {
-		fmt.Printf("%+v\n", p.Location)
+func List(cfg *config.Config, backupArguments BackupArguments) {
+	backupProviderImpl := setupBackupProvider(cfg)
+	snapshots, err := backupProviderImpl.ListSnapshots()
+	if err != nil {
+		fmt.Printf("Error listing snapshots: %s", err)
+		return
 	}
+	var output string
+	if backupArguments.Output != "" {
+		output = backupArguments.Output
+	} else {
+		output = "json"
+	}
+	out, _ := config.Output(snapshots, output)
+	fmt.Println(out)
+
 }

@@ -29,7 +29,9 @@ func (r ResticProvider) ListSnapshots() ([]*Snapshot, error) {
 	command = append(command, "-r", r.BackupRepository)
 
 	cmd := exec.Command(r.SnapshotListCommand[0], command...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("RESTIC_PASSWORD_FILE=%s", r.BackupRepositoryPasswordLocation))
+	if r.BackupRepositoryPasswordLocation != "" {
+		cmd.Env = append(os.Environ(), fmt.Sprintf("RESTIC_PASSWORD_FILE=%s", r.BackupRepositoryPasswordLocation))
+	}
 
 	output, err := cmd.Output()
 
