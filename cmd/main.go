@@ -27,14 +27,14 @@ func Execute() {
 		},
 	}
 
-	var backupRestore = &cobra.Command{
+	var backupRestoreCmd = &cobra.Command{
 		Use: "restore",
 		Run: func(cmd *cobra.Command, args []string) {
 			backup.Restore(cfg, backupArguments)
 		},
 	}
 
-	var backupList = &cobra.Command{
+	var backupListCmd = &cobra.Command{
 		Use: "list",
 		Run: func(cmd *cobra.Command, args []string) {
 			backup.List(cfg, backupArguments)
@@ -45,16 +45,20 @@ func Execute() {
 		log.Fatalf("Can't load config: %s", err)
 	}
 	rootCmd.AddCommand(backupCmd)
-	backupCmd.AddCommand(backupRestore)
-	backupCmd.AddCommand(backupList)
-	backupRestore.Flags().StringVar(&backupArguments.SnapshotID, "snapshot-id", "", "Specify the snapshot ID")
-	backupRestore.Flags().StringVar(&backupArguments.Path, "filter-path", "", "Specify the path filter")
-	backupRestore.Flags().StringVar(&backupArguments.Output, "output", "", "Output type")
-	backupList.Flags().StringVar(&backupArguments.SnapshotID, "snapshot-id", "", "Specify the snapshot ID")
-	backupList.Flags().StringVar(&backupArguments.Path, "filter-path", "", "Specify the path filter")
-	backupList.Flags().StringVar(&backupArguments.Output, "output", "", "Output type")
+	backupCmd.AddCommand(backupRestoreCmd)
 
-	rootCmd.Execute()
+	backupCmd.AddCommand(backupListCmd)
+	backupRestoreCmd.Flags().StringVar(&backupArguments.SnapshotID, "snapshot-id", "", "Specify the snapshot ID")
+	backupRestoreCmd.Flags().StringVar(&backupArguments.Path, "filter-path", "", "Specify the path filter")
+	backupRestoreCmd.Flags().StringVar(&backupArguments.Output, "output", "", "Output type")
+	err = backupRestoreCmd.MarkFlagRequired("snapshot-ids")
+	if err == nil {
+		log.Fatal(err.Error())
+	}
+	backupListCmd.Flags().StringVar(&backupArguments.Path, "filter-path", "", "Specify the path filter")
+	backupListCmd.Flags().StringVar(&backupArguments.Output, "output", "", "Output type")
+
+	_ = rootCmd.Execute()
 }
 
 func main() {

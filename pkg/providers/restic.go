@@ -57,3 +57,10 @@ func (r ResticProvider) RestoreSnapshot(snapshotID string, targetLocation string
 	_, err := cmd.Output()
 	return err
 }
+
+// MountSnapshot
+func (r ResticProvider) MountSnapshot(snapshotID string, mountPath string) error {
+	// TODO: implement
+
+	return nil
+}
