@@ -48,13 +48,33 @@ func (r ResticProvider) ListSnapshots() ([]*Snapshot, error) {
 }
 
 // RestoreSnapshot restores a specific snapshot to the given location.
-func (r ResticProvider) RestoreSnapshot(snapshotID string, targetLocation string) error {
+func (r ResticProvider) RestoreSnapshot(snapshotID string, target string, paths []string) error {
 	if snapshotID == "" {
 		return errors.New("snapshotID cannot be empty")
 	}
+	args := []string{"restore", snapshotID, "-r", r.BackupRepository}
+	if len(paths) > 0 {
+		for _, path := range paths {
+			args = append(args, "--path", path)
+		}
+	}
+	args = append(args, "--target", target)
+	finfo, err := os.Stat(target)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("restic restore failed as the target %s does not exist", target)
+	}
+	if !finfo.IsDir() {
+		return fmt.Errorf("restic restore failed as the target %s is not a directory", target)
+	}
+	cmd := exec.Command("restic", args...)
+	if r.BackupRepositoryPasswordLocation != "" {
+		cmd.Env = append(os.Environ(), fmt.Sprintf("RESTIC_PASSWORD_FILE=%s", r.BackupRepositoryPasswordLocation))
+	}
 
-	cmd := exec.Command("restic", "restore", snapshotID, "--target", targetLocation)
-	_, err := cmd.Output()
+	combined_output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("restore restore failed: %s", string(combined_output))
+	}
 	return err
 }
 

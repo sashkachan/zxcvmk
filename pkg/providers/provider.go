@@ -4,7 +4,7 @@ package providers
 type BackupProvider interface {
 	ListSnapshots() ([]*Snapshot, error)
 	MountSnapshot(snapshotID string, mountPath string) error
-	RestoreSnapshot(snapshotID string, targetLocation string) error
+	RestoreSnapshot(snapshotID string, target string, paths []string) error
 }
 
 type Snapshot struct {

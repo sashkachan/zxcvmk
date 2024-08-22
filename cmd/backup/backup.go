@@ -48,16 +48,18 @@ func Restore(cfg *config.Config, backupArguments BackupArguments) {
 	if err != nil {
 		fmt.Printf("Error listing snapshots: %s", err)
 	}
-
 	if snapshot, found := findSnapshotByID(snapshots, backupArguments.SnapshotID); found {
-		if backupArguments.Path != "" {
-			for _, path := range snapshot.Paths {
-				if backupArguments.Path == path {
-					// restore this path
-				}
-			}
+		target, err := createSnapshotMountTarget(snapshot.ID)
+		if err != nil {
+			log.Fatal("Snapshot target directory could not be created", err)
+		}
+		// TODO: allow multiple paths
+		err = backupProviderImpl.RestoreSnapshot(snapshot.ID, target, []string{backupArguments.Path})
+		if err != nil {
+			log.Fatalf("restore failed: %s", err.Error())
 		}
 	} else {
+		log.Fatal("Snapshot not found")
 	}
 }
 
@@ -83,18 +85,19 @@ func List(cfg *config.Config, backupArguments BackupArguments) {
 
 }
 
-func mountSnapshotID(id string, paths []string) error {
+/* func mountSnapshotID(id string, paths []string) error {
 	target_tmpdir, err := createSnapshotMountTarget(id)
 	if err != nil {
 		return err
 	}
 
 	return nil
-}
-func restoreSnapshotID(id string, paths []string) error {
+} */
+
+/* func restoreSnapshotID(id string, paths []string) error {
 
 	return nil
-}
+} */
 
 func findSnapshotByID(snapshots []*providers.Snapshot, id string) (*providers.Snapshot, bool) {
 	for i := range snapshots {
