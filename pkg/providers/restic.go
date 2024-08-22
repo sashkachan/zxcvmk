@@ -58,6 +58,7 @@ func (r ResticProvider) RestoreSnapshot(snapshotID string, target string, paths 
 	if len(paths) > 0 {
 		for _, path := range paths {
 			args = append(args, "--path", path)
+			args = append(args, "--include", path)
 		}
 	}
 	args = append(args, "--target", target)

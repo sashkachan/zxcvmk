@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"zxcvmk/pkg/config"
 	"zxcvmk/pkg/providers"
 )
@@ -16,6 +18,48 @@ type BackupArguments struct {
 
 func init() {
 
+}
+
+func runPostRestoreHook(cfg *config.Config, paths []string) {
+	for _, path := range paths {
+		for _, cfgPath := range cfg.BackupTargets {
+			if path == cfgPath.Location && cfgPath.PostRestoreHook != nil {
+				cmd := exec.Command(cfgPath.PostRestoreHook[0], cfgPath.PostRestoreHook[1:]...)
+				result, err := cmd.CombinedOutput()
+				if err != nil {
+					log.Printf("error executing post-restore-hook for %s: %s", path, result)
+				}
+			}
+		}
+	}
+}
+
+func runPreRestoreHook(cfg *config.Config, paths []string) {
+	for _, path := range paths {
+		for _, cfgPath := range cfg.BackupTargets {
+			if path == cfgPath.Location && cfgPath.PreRestoreHook != nil {
+				cmd := exec.Command(cfgPath.PreRestoreHook[0], cfgPath.PreRestoreHook[1:]...)
+				result, err := cmd.CombinedOutput()
+				if err != nil {
+					log.Printf("error executing pre-restore-hook for %s: %s", path, result)
+				}
+			}
+		}
+	}
+}
+
+func rsyncPaths(from string, paths []string) error {
+	for _, path := range paths {
+		source := filepath.Join(from, path)
+		rsyncArgs := []string{"-a", "-v", "--relative", source, path}
+		cmd := exec.Command("rsync", rsyncArgs...)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Printf("error rsync paths %s to %s: %s", source, path, output)
+			return err
+		}
+	}
+	return nil
 }
 
 func setupBackupProvider(cfg *config.Config) providers.BackupProvider {
@@ -48,7 +92,15 @@ func Restore(cfg *config.Config, backupArguments BackupArguments) {
 		err = backupProviderImpl.RestoreSnapshot(snapshot.ID, target, backupArguments.Paths)
 		if err != nil {
 			log.Fatalf("restore failed: %s", err.Error())
+			return
 		}
+
+		runPreRestoreHook(cfg, backupArguments.Paths)
+		err = rsyncPaths(target, backupArguments.Paths)
+		if err != nil {
+			log.Printf("failed to rsync contents: %s", err)
+		}
+		runPostRestoreHook(cfg, backupArguments.Paths)
 	} else {
 		log.Fatal("Snapshot not found")
 	}
