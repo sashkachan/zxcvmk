@@ -2,7 +2,7 @@ package providers
 
 // type BackupProvider defines the methods that a backup provider must implement.
 type BackupProvider interface {
-	ListSnapshots() ([]*Snapshot, error)
+	ListSnapshots(filterPaths []string) ([]*Snapshot, error)
 	MountSnapshot(snapshotID string, mountPath string) error
 	RestoreSnapshot(snapshotID string, target string, paths []string) error
 }

@@ -9,26 +9,28 @@ import (
 )
 
 type ResticProvider struct {
-	SnapshotListCommand              []string
 	BackupRepositoryPasswordLocation string
 	BackupRepository                 string
 }
 
 // NewResticProvider creates a new instance of ResticProvider.
-func NewResticProvider(snapshotListCommand []string, passwordLocation, repository string) *ResticProvider {
+func NewResticProvider(passwordLocation, repository string) *ResticProvider {
 	return &ResticProvider{
-		SnapshotListCommand:              snapshotListCommand,
 		BackupRepositoryPasswordLocation: passwordLocation,
 		BackupRepository:                 repository,
 	}
 }
 
 // ListSnapshots returns a list of available snapshots from the restic repository.
-func (r ResticProvider) ListSnapshots() ([]*Snapshot, error) {
-	command := r.SnapshotListCommand[1:]
+func (r ResticProvider) ListSnapshots(filterPaths []string) ([]*Snapshot, error) {
+	command := []string{"restic", "snapshots", "--json"}
 	command = append(command, "-r", r.BackupRepository)
-
-	cmd := exec.Command(r.SnapshotListCommand[0], command...)
+	if len(filterPaths) > 0 {
+		for _, path := range filterPaths {
+			command = append(command, "--path", path)
+		}
+	}
+	cmd := exec.Command(command[0], command[1:]...)
 	if r.BackupRepositoryPasswordLocation != "" {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("RESTIC_PASSWORD_FILE=%s", r.BackupRepositoryPasswordLocation))
 	}

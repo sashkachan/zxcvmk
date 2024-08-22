@@ -8,17 +8,9 @@ import (
 	"zxcvmk/pkg/providers"
 )
 
-// identify backup targets
-// set backup actions:
-// - mount
-// - restore
-// - test (?)
-//
-//
-
 type BackupArguments struct {
 	SnapshotID string
-	Path       string
+	Paths      []string
 	Output     string
 }
 
@@ -34,7 +26,7 @@ func setupBackupProvider(cfg *config.Config) providers.BackupProvider {
 			activeProvider = provider
 			switch provider.Name {
 			case "restic":
-				backupProviderImpl = providers.NewResticProvider(activeProvider.SnapshotListCommand, activeProvider.BackupRepositoryPasswordLocation, activeProvider.BackupRepository)
+				backupProviderImpl = providers.NewResticProvider(activeProvider.BackupRepositoryPasswordLocation, activeProvider.BackupRepository)
 			}
 			break
 		}
@@ -44,17 +36,16 @@ func setupBackupProvider(cfg *config.Config) providers.BackupProvider {
 
 func Restore(cfg *config.Config, backupArguments BackupArguments) {
 	backupProviderImpl := setupBackupProvider(cfg)
-	snapshots, err := backupProviderImpl.ListSnapshots()
+	snapshots, err := backupProviderImpl.ListSnapshots(backupArguments.Paths)
 	if err != nil {
 		fmt.Printf("Error listing snapshots: %s", err)
 	}
 	if snapshot, found := findSnapshotByID(snapshots, backupArguments.SnapshotID); found {
-		target, err := createSnapshotMountTarget(snapshot.ID)
+		target, err := createSnapshotMountTarget()
 		if err != nil {
 			log.Fatal("Snapshot target directory could not be created", err)
 		}
-		// TODO: allow multiple paths
-		err = backupProviderImpl.RestoreSnapshot(snapshot.ID, target, []string{backupArguments.Path})
+		err = backupProviderImpl.RestoreSnapshot(snapshot.ID, target, backupArguments.Paths)
 		if err != nil {
 			log.Fatalf("restore failed: %s", err.Error())
 		}
@@ -63,13 +54,9 @@ func Restore(cfg *config.Config, backupArguments BackupArguments) {
 	}
 }
 
-func Mount(cfg *config.Config) {
-	log.Println("Mount")
-}
-
 func List(cfg *config.Config, backupArguments BackupArguments) {
 	backupProviderImpl := setupBackupProvider(cfg)
-	snapshots, err := backupProviderImpl.ListSnapshots()
+	snapshots, err := backupProviderImpl.ListSnapshots(backupArguments.Paths)
 	if err != nil {
 		fmt.Printf("Error listing snapshots: %s", err)
 		return
@@ -85,20 +72,6 @@ func List(cfg *config.Config, backupArguments BackupArguments) {
 
 }
 
-/* func mountSnapshotID(id string, paths []string) error {
-	target_tmpdir, err := createSnapshotMountTarget(id)
-	if err != nil {
-		return err
-	}
-
-	return nil
-} */
-
-/* func restoreSnapshotID(id string, paths []string) error {
-
-	return nil
-} */
-
 func findSnapshotByID(snapshots []*providers.Snapshot, id string) (*providers.Snapshot, bool) {
 	for i := range snapshots {
 		if snapshots[i].ID == id {
@@ -108,7 +81,7 @@ func findSnapshotByID(snapshots []*providers.Snapshot, id string) (*providers.Sn
 	return nil, false
 }
 
-func createSnapshotMountTarget(snapshotID string) (string, error) {
+func createSnapshotMountTarget() (string, error) {
 	tmpdir := os.TempDir()
 	target_tmpdir, err := os.MkdirTemp(tmpdir, "snapshot-")
 	if err != nil {

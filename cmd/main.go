@@ -49,13 +49,13 @@ func Execute() {
 
 	backupCmd.AddCommand(backupListCmd)
 	backupRestoreCmd.Flags().StringVar(&backupArguments.SnapshotID, "snapshot-id", "", "Specify the snapshot ID")
-	backupRestoreCmd.Flags().StringVar(&backupArguments.Path, "filter-path", "", "Specify the path filter")
+	backupRestoreCmd.Flags().StringArrayVar(&backupArguments.Paths, "filter-path", []string{}, "Specify the path filter (can be used multiple times)")
 	backupRestoreCmd.Flags().StringVar(&backupArguments.Output, "output", "", "Output type")
 	err = backupRestoreCmd.MarkFlagRequired("snapshot-ids")
 	if err == nil {
 		log.Fatal(err.Error())
 	}
-	backupListCmd.Flags().StringVar(&backupArguments.Path, "filter-path", "", "Specify the path filter")
+	backupListCmd.Flags().StringArrayVar(&backupArguments.Paths, "filter-path", []string{}, "Specify the path filter (can be used multiple times)")
 	backupListCmd.Flags().StringVar(&backupArguments.Output, "output", "", "Output type")
 
 	_ = rootCmd.Execute()
