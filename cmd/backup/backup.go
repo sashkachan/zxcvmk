@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"zxcvmk/pkg/config"
 	"zxcvmk/pkg/providers"
 )
@@ -50,12 +49,12 @@ func runPreRestoreHook(cfg *config.Config, paths []string) {
 
 func rsyncPaths(from string, paths []string) error {
 	for _, path := range paths {
-		source := filepath.Join(from, path)
-		rsyncArgs := []string{"-a", "-v", "--relative", source, path}
+		rsyncArgs := []string{"-a", "-v", "--relative", ".", "/"}
 		cmd := exec.Command("rsync", rsyncArgs...)
+		cmd.Dir = from
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Printf("error rsync paths %s to %s: %s", source, path, output)
+			log.Printf("error rsync paths %s to %s: %s", from, path, output)
 			return err
 		}
 	}
