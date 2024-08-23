@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"zxcvmk/pkg/config"
 	"zxcvmk/pkg/providers"
 )
@@ -13,10 +14,6 @@ type BackupArguments struct {
 	SnapshotID string
 	Paths      []string
 	Output     string
-}
-
-func init() {
-
 }
 
 func runPostRestoreHook(cfg *config.Config, paths []string) {
@@ -40,7 +37,7 @@ func runPreRestoreHook(cfg *config.Config, paths []string) {
 				cmd := exec.Command(cfgPath.PreRestoreHook[0], cfgPath.PreRestoreHook[1:]...)
 				result, err := cmd.CombinedOutput()
 				if err != nil {
-					log.Printf("error executing pre-restore-hook for %s: %s", path, result)
+					log.Printf("pre-restore-hook failed with %s: %s", err, result)
 				}
 			}
 		}
@@ -49,7 +46,11 @@ func runPreRestoreHook(cfg *config.Config, paths []string) {
 
 func rsyncPaths(from string, paths []string) error {
 	for _, path := range paths {
-		rsyncArgs := []string{"-a", "-v", "--relative", ".", "/"}
+		full_path := filepath.Join(from, path)
+		if full_path[len(full_path)-1] != filepath.Separator {
+			full_path = full_path + string(filepath.Separator)
+		}
+		rsyncArgs := []string{"-a", "-v", full_path, path}
 		cmd := exec.Command("rsync", rsyncArgs...)
 		cmd.Dir = from
 		output, err := cmd.CombinedOutput()
@@ -85,6 +86,9 @@ func Restore(cfg *config.Config, backupArguments BackupArguments) {
 	}
 	if snapshot, found := findSnapshotByID(snapshots, backupArguments.SnapshotID); found {
 		target, err := createSnapshotMountTarget()
+		defer func() {
+			_ = deleteSnapshotMountTarget(target)
+		}()
 		if err != nil {
 			log.Fatal("Snapshot target directory could not be created", err)
 		}
@@ -95,11 +99,13 @@ func Restore(cfg *config.Config, backupArguments BackupArguments) {
 		}
 
 		runPreRestoreHook(cfg, backupArguments.Paths)
+		defer func() {
+			runPostRestoreHook(cfg, backupArguments.Paths)
+		}()
 		err = rsyncPaths(target, backupArguments.Paths)
 		if err != nil {
 			log.Printf("failed to rsync contents: %s", err)
 		}
-		runPostRestoreHook(cfg, backupArguments.Paths)
 	} else {
 		log.Fatal("Snapshot not found")
 	}
@@ -139,4 +145,13 @@ func createSnapshotMountTarget() (string, error) {
 		return "", err
 	}
 	return target_tmpdir, nil
+}
+
+func deleteSnapshotMountTarget(target string) error {
+	err := os.RemoveAll(target)
+	if err != nil {
+		log.Printf("error when removeall %s: %s", target, err)
+		return err
+	}
+	return nil
 }
