@@ -36,24 +36,13 @@
               echo "go run cmd/main.go"
             '';
           };
-        packages.default = pkgs.stdenv.mkDerivation {
+        packages.default = pkgs.buildGoModule {
           pname = "zxcvmk";
           version = "1.0.0";
           src = ./.;
+          meta.mainProgram = "cmd/zxcvmk";
 
-          buildInputs = [ pkgs.go ];
-
-          buildPhase = ''
-            mkdir -p $out/bin
-            go build -o $out/bin/zxcvmk ./cmd/main.go
-          '';
-
-          meta = with pkgs.lib; {
-            mainProgram = "zxcvmk";
-            description = "zxcvmk";
-            license = licenses.mit;
-            maintainers = [ maintainers.yourself ];
-          };
+          vendorHash = "sha256-073CSOz6VUdrXdbeWiR0qoWCpr9qcRtbcHd6PxMb1AU=";
         };
       }
     );
