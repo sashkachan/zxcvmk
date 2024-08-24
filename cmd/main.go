@@ -2,17 +2,23 @@ package main
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"log"
+	"os"
 	"zxcvmk/cmd/backup"
 	"zxcvmk/pkg/config"
+
+	"github.com/spf13/cobra"
 )
 
 func Execute() {
 	backupArguments := backup.BackupArguments{}
-
+	// get config location from env
+	config_location := os.Getenv("ZXCVMK_CONFIG")
 	var defaultConfig = "config.yaml"
-	var cfg, err = config.LoadConfig(defaultConfig)
+	if config_location == "" {
+		config_location = defaultConfig
+	}
+	var cfg, err = config.LoadConfig(config_location)
 
 	var rootCmd = &cobra.Command{
 		Run: func(cmd *cobra.Command, args []string) {
