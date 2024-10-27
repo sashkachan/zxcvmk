@@ -51,7 +51,7 @@ type BackupProvider struct {
 func Output(data any, output string) (string, error) {
 	switch output {
 	case "json":
-		jsonData, err := json.Marshal(data)
+		jsonData, err := json.MarshalIndent(data, "", "  ")
 		if err != nil {
 			return "", err
 		}
