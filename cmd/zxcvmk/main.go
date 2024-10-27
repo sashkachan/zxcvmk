@@ -96,7 +96,20 @@ func Execute() {
 	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.Pvc, "pvc", "", "Specify the pvc to replant")
 	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.Namespace, "namespace", "", "Specify the namespace of the pvc to replant")
 	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.Deployment, "deployment", "", "Specify the deployment of the pvc to replant")
+	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.DestVolumeSize, "dst-size", "", "Specify the destination pvc size")
+	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.DestStorageClassName, "dst-storage-classname", "", "Specify the destination pvc classname")
 	k8sVolumeReplantCmd.Flags().BoolVar(&replantArguments.DryRun, "dry-run", false, "dry-run")
+
+	err = k8sVolumeReplantCmd.MarkFlagRequired("dst-size")
+	if err != nil {
+		slog.Error("dst-size is not provided")
+		return
+	}
+	err = k8sVolumeReplantCmd.MarkFlagRequired("dst-storage-classname")
+	if err != nil {
+		slog.Error("dst-storage-classname is not provided")
+		return
+	}
 
 	_ = rootCmd.Execute()
 }
