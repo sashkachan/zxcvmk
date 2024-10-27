@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"zxcvmk/cmd/backup"
 	k8svolumes "zxcvmk/cmd/k8s-volumes"
 	"zxcvmk/pkg/config"
+
+	"log/slog"
 
 	"github.com/spf13/cobra"
 )
@@ -14,6 +15,7 @@ import (
 func Execute() {
 	backupArguments := backup.BackupArguments{}
 	replantArguments := k8svolumes.K8sArguments{}
+	var debugLevel bool
 	// get config location from env
 	config_location := os.Getenv("ZXCVMK_CONFIG")
 	var defaultConfig = "config.yaml"
@@ -24,6 +26,7 @@ func Execute() {
 
 	var rootCmd = &cobra.Command{
 		Run: func(cmd *cobra.Command, args []string) {
+			SetupLogger(debugLevel)
 			fmt.Println("This is a root command. It does nothing.")
 		},
 	}
@@ -31,6 +34,7 @@ func Execute() {
 	var backupCmd = &cobra.Command{
 		Use: "backup",
 		Run: func(cmd *cobra.Command, args []string) {
+			SetupLogger(debugLevel)
 			backup.List(cfg, backupArguments)
 		},
 	}
@@ -38,6 +42,7 @@ func Execute() {
 	var backupRestoreCmd = &cobra.Command{
 		Use: "restore",
 		Run: func(cmd *cobra.Command, args []string) {
+			SetupLogger(debugLevel)
 			backup.Restore(cfg, backupArguments)
 		},
 	}
@@ -45,6 +50,7 @@ func Execute() {
 	var backupListCmd = &cobra.Command{
 		Use: "list",
 		Run: func(cmd *cobra.Command, args []string) {
+			SetupLogger(debugLevel)
 			backup.List(cfg, backupArguments)
 		},
 	}
@@ -52,19 +58,21 @@ func Execute() {
 	var k8sCmd = &cobra.Command{
 		Use: "k8s",
 		Run: func(cmd *cobra.Command, args []string) {
-
+			SetupLogger(debugLevel)
 		},
 	}
 
 	var k8sVolumeReplantCmd = &cobra.Command{
 		Use: "k8s-volume-replant",
 		Run: func(cmd *cobra.Command, args []string) {
+			SetupLogger(debugLevel)
 			k8svolumes.Replant(cfg, replantArguments)
 		},
 	}
 
 	if err != nil {
-		log.Fatalf("Can't load config: %s", err)
+		slog.Error("Can't load config", "error", err)
+		return
 	}
 	rootCmd.AddCommand(backupCmd)
 	rootCmd.AddCommand(k8sCmd)
@@ -72,16 +80,18 @@ func Execute() {
 	backupCmd.AddCommand(backupListCmd)
 	k8sCmd.AddCommand(k8sVolumeReplantCmd)
 
+	rootCmd.PersistentFlags().BoolVar(&debugLevel, "debug", false, "Debug level")
+
 	backupRestoreCmd.Flags().StringVar(&backupArguments.SnapshotID, "snapshot-id", "", "Specify the snapshot ID")
 	backupRestoreCmd.Flags().StringArrayVar(&backupArguments.Paths, "filter-path", []string{}, "Specify the path filter (can be used multiple times)")
 	backupRestoreCmd.Flags().StringVar(&backupArguments.Output, "output", "", "Output type")
 	err = backupRestoreCmd.MarkFlagRequired("snapshot-ids")
 	if err == nil {
-		log.Fatal(err.Error())
+		slog.Error("error setting up", "error", err)
+		return
 	}
 	backupListCmd.Flags().StringArrayVar(&backupArguments.Paths, "filter-path", []string{}, "Specify the path filter (can be used multiple times)")
 	backupListCmd.Flags().StringVar(&backupArguments.Output, "output", "", "Output type")
-
 
 	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.Pvc, "pvc", "", "Specify the pvc to replant")
 	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.Namespace, "namespace", "", "Specify the namespace of the pvc to replant")
@@ -89,6 +99,24 @@ func Execute() {
 	k8sVolumeReplantCmd.Flags().BoolVar(&replantArguments.DryRun, "dry-run", false, "dry-run")
 
 	_ = rootCmd.Execute()
+}
+
+func SetupLogger(debugLevel bool) {
+	var handlerOptions slog.HandlerOptions
+	var slogLevel slog.Level
+	if debugLevel == true {
+		slogLevel = slog.LevelDebug
+	} else {
+		slogLevel = slog.LevelInfo
+	}
+	handlerOptions = slog.HandlerOptions{
+		Level: slogLevel,
+	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &handlerOptions))
+	slog.SetDefault(logger)
+
+	slog.Info("Debug level", "debugLevel", debugLevel)
 }
 
 func main() {

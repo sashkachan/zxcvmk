@@ -11,10 +11,18 @@ package k8svolumes
 // Attach the old depoyment to the new volume
 
 import (
-	"log"
+	"context"
+	"fmt"
+	"os"
 	"zxcvmk/pkg/config"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"log/slog"
+
+	v1 "k8s.io/api/apps/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	k8sapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
 type K8sArguments struct {
@@ -24,19 +32,61 @@ type K8sArguments struct {
 	DryRun     bool
 }
 
-func makeClient() *k8sapi.Config {
-	kubeconfiglocation := "~/.kube/config"
-	kubeconfig, err := clientcmd.LoadFromFile(kubeconfiglocation)
-	if err != nil {
-		log.Fatalf("Can't load config from: %s", kubeconfiglocation)
-	}
-	return kubeconfig
-}
-
 func Replant(cfg *config.Config, backupArguments K8sArguments) {
-	log.Println("Can't replant. Not implemented")
-	log.Printf("%#v", backupArguments)
+	// todo: add support for KUBECONFIG
 
+	clientset, err := getClientSet()
+	if err != nil {
+		slog.Error("cannot get clientset: {err}", "err", err)
+		return
+	}
+
+	d, err := findPvcUseDeployment(backupArguments.Pvc, backupArguments.Namespace, clientset)
+	if err != nil {
+		slog.Error("could not find deployment: %s", err)
+	}
+	slog.Debug("Deployment found", "deployment", d)
 }
 
-// find what deployment is using vpc
+func getClientSet() (*kubernetes.Clientset, error) {
+	homedir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("cannot get userdir: %w", err)
+	}
+	kubeconfiglocation := homedir + "/.kube/config"
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfiglocation)
+	if err != nil {
+		return nil, fmt.Errorf("error creating Kubernetes client: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("cannot get clientset: %w", err)
+	}
+	return clientset, nil
+}
+
+func findPvcUseDeployment(pvcName, namespace string, clientset *kubernetes.Clientset) (*v1.Deployment, error) {
+	slog.Info("Namespace", "ns", namespace)
+	// pvc, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(context.TODO(), pvcName, metav1.GetOptions{})
+	// if err != nil {
+	// 	return nil, fmt.Errorf("cannot get pvc %s: %w", pvcName, err)
+	// }
+
+	deployments, err := clientset.AppsV1().Deployments(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("cannot get deployment %s: %w", pvcName, err)
+	}
+	for _, deployment := range deployments.Items {
+		for _, volume := range deployment.Spec.Template.Spec.Volumes {
+			if volume.PersistentVolumeClaim != nil && volume.PersistentVolumeClaim.ClaimName == pvcName {
+				return &deployment, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+//func getDeploymentsinNamespace(namespace string, clientset *kubernetes.Clientset) []Deployment
+
+// find what deployment is using pvc

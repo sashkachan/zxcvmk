@@ -23,8 +23,6 @@
               gopls
               delve
               go
-              gotests
-              gomodifytags
               gore
               go-tools
               golangci-lint
