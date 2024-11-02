@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 	"zxcvmk/pkg/config"
@@ -21,8 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-
-	"log/slog"
 
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -117,7 +116,6 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 		}
 	}
 	slog.Info("transfer complete")
-
 }
 
 func getPodStatusPhase(clientset *kubernetes.Clientset, pod *corev1.Pod) (corev1.PodPhase, error) {
@@ -173,12 +171,11 @@ func runCmdOnAPod(clientset *kubernetes.Clientset, pod *corev1.Pod, command []st
 		Stdin:  nil,
 		Tty:    false,
 	})
-
 	if err != nil {
 		return fmt.Errorf("cannot cmd src to dst: %w", err)
 	}
 
-	slog.Debug("cmd output", "output", string(stdout.Bytes()))
+	slog.Debug("cmd output", "output", stdout.String())
 	return nil
 }
 
