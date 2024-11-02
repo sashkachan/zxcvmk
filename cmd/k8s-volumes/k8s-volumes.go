@@ -33,8 +33,10 @@ import (
 )
 
 type K8sArguments struct {
-	Pvc                  string
+	PvcSrc               string
+	PvcDst               string
 	Deployment           string
+	DeploymentVolumeName string
 	Namespace            string
 	DestVolumeSize       string
 	DestStorageClassName string
@@ -55,13 +57,16 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 		slog.Error("could not find deployment", "error", err)
 		return
 	}
-	slog.Debug("Deployment found", "deployment", d.Name, "replicas", d.Spec.Replicas)
+	slog.Debug("Deployment found", "deployment", d.Name, "spec", d.Spec)
 
-	scaleDownDeployment(k8sArguments, d, clientset)
-
+	d, err = scaleDownDeployment(k8sArguments, d, clientset)
+	if err != nil {
+		slog.Error("could scale down deploymend", "error", err)
+		return
+	}
 	slog.Info("creating temporary pod")
 	pod, err := createTemporaryPod(k8sArguments, clientset)
-
+	time.Sleep(3 * time.Second)
 	if err != nil {
 		slog.Error("could not create pod", "error", err)
 		return
@@ -73,32 +78,17 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 		slog.Error("could not create pvc", "error", err)
 		return
 	}
-	defer cleanupPvc(k8sArguments, pvc.Name, clientset)
+	// defer cleanupPvc(k8sArguments, pvc.Name, clientset)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
-	defer cancel()
-	done := make(chan struct{})
-	go func() {
-		err := waitTillRunning(ctx, clientset, pod)
-		if err != nil {
-			slog.Error("cannot wait till running", "error", err)
-		}
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		phase, err := getPodStatusPhase(clientset, pod)
-		if err != nil {
-			slog.Error("cannot get pod status, timeout")
-			return
-		}
-		if phase == corev1.PodRunning {
-			slog.Debug("pod status is Running. continue.")
-		}
-	case <-ctx.Done():
-		slog.Error("cannot wait till running, timeout")
+	phase, err := getPodStatusPhase(clientset, pod)
+	slog.Debug("pod status phase retrieved", "phase", phase)
+	if err != nil {
+		slog.Error("cannot get pod status, timeout")
+		cleanupPvc(k8sArguments, pvc.Name, clientset)
 		return
+	}
+	if phase == corev1.PodRunning {
+		slog.Debug("pod status is Running. continue.")
 	}
 
 	slog.Info("pod created", "pod", pod.Name, "mounts", pod.Spec.Containers[0].VolumeMounts)
@@ -107,20 +97,35 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 	err = transferVolumeContents(clientset, pod)
 	if err != nil {
 		slog.Error("cannot transfer volume contents", "error", err)
-
+		cleanupPvc(k8sArguments, pvc.Name, clientset)
+		return
 	}
-	time.Sleep(time.Duration(10) * time.Second)
+
+	d, err = mountNewVolumesOnDeployment(k8sArguments, d, pvc, clientset)
+	if err != nil {
+		slog.Error("cannot restore deployment to previous state with the new volume", "error", err)
+		cleanupPvc(k8sArguments, pvc.Name, clientset)
+		return
+	}
+	slog.Info("transfer complete")
 
 }
 
 func getPodStatusPhase(clientset *kubernetes.Clientset, pod *corev1.Pod) (corev1.PodPhase, error) {
-	podStatus, err := clientset.CoreV1().Pods(pod.ObjectMeta.Namespace).Get(context.TODO(), pod.ObjectMeta.Name, metav1.GetOptions{})
-	if err != nil {
-		return "", fmt.Errorf("cannot rsync src to dst: %w", err)
+	for attempts := 0; attempts < 20; attempts++ {
+		podStatus, err := clientset.CoreV1().Pods(pod.ObjectMeta.Namespace).Get(context.TODO(), pod.ObjectMeta.Name, metav1.GetOptions{})
+		if err != nil {
+			return "", fmt.Errorf("cannot get pod status phase: %w", err)
+		}
+
+		if podStatus.Status.Phase == corev1.PodRunning {
+			return podStatus.Status.Phase, nil
+		}
+
+		time.Sleep(5 * time.Second)
 	}
 
-	return podStatus.Status.Phase, nil
-
+	return "", fmt.Errorf("pod did not reach Running state within expected time")
 }
 
 func runCmdOnAPod(clientset *kubernetes.Clientset, pod *corev1.Pod, command []string) error {
@@ -132,17 +137,20 @@ func runCmdOnAPod(clientset *kubernetes.Clientset, pod *corev1.Pod, command []st
 	if err != nil {
 		return fmt.Errorf("cannot cmd src to dst: %w", err)
 	}
+
+	scheme := runtime.NewScheme()
+	corev1.AddToScheme(scheme)
+	parameterCodec := runtime.NewParameterCodec(scheme)
 	req := clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(pod.ObjectMeta.Name).
 		Namespace(pod.ObjectMeta.Namespace).
 		SubResource("exec")
-
 	req.VersionedParams(&corev1.PodExecOptions{
 		Command: command,
 		Stdout:  true,
 		Stderr:  true,
-	}, runtime.NewParameterCodec(&runtime.Scheme{}))
+	}, parameterCodec)
 
 	exec, err := remotecommand.NewSPDYExecutor(restCfg, "POST", req.URL())
 	if err != nil {
@@ -153,6 +161,8 @@ func runCmdOnAPod(clientset *kubernetes.Clientset, pod *corev1.Pod, command []st
 	err = exec.StreamWithContext(context.TODO(), remotecommand.StreamOptions{
 		Stdout: &stdout,
 		Stderr: &stderr,
+		Stdin:  nil,
+		Tty:    false,
 	})
 
 	if err != nil {
@@ -168,7 +178,7 @@ func transferVolumeContents(clientset *kubernetes.Clientset, pod *corev1.Pod) er
 	if err != nil {
 		return err
 	}
-	return runCmdOnAPod(clientset, pod, []string{"rsync", "-a", "--progress", "/source", "/destination"})
+	return runCmdOnAPod(clientset, pod, []string{"rsync", "-a", "--progress", "/source/", "/destination"})
 }
 
 func cleanupPod(args K8sArguments, podName string, clientset *kubernetes.Clientset) {
@@ -206,11 +216,11 @@ func findPvcUseDeployment(k8sArgs K8sArguments, clientset *kubernetes.Clientset)
 
 	deployments, err := clientset.AppsV1().Deployments(k8sArgs.Namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("cannot get deployment %s: %w", k8sArgs.Pvc, err)
+		return nil, fmt.Errorf("cannot get deployment %s: %w", k8sArgs.PvcSrc, err)
 	}
 	for _, deployment := range deployments.Items {
 		for _, volume := range deployment.Spec.Template.Spec.Volumes {
-			if volume.PersistentVolumeClaim != nil && volume.PersistentVolumeClaim.ClaimName == k8sArgs.Pvc {
+			if volume.PersistentVolumeClaim != nil && volume.PersistentVolumeClaim.ClaimName == k8sArgs.PvcSrc {
 				return &deployment, nil
 			}
 		}
@@ -218,11 +228,46 @@ func findPvcUseDeployment(k8sArgs K8sArguments, clientset *kubernetes.Clientset)
 	return nil, nil
 }
 
-func scaleDownDeployment(k8sArgs K8sArguments, d *v1.Deployment, clientset *kubernetes.Clientset) {
+func scaleDownDeployment(k8sArgs K8sArguments, d *v1.Deployment, clientset *kubernetes.Clientset) (*v1.Deployment, error) {
 	newReplicasCount := int32(0)
 	d.Spec.Replicas = &newReplicasCount
 	slog.Info("scaling deployment to 0", "deployment", d.Name, "namespace", d.Namespace)
-	clientset.AppsV1().Deployments(k8sArgs.Namespace).Update(context.TODO(), d, metav1.UpdateOptions{})
+	d, err := clientset.AppsV1().Deployments(k8sArgs.Namespace).Update(context.TODO(), d, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("cannot scale down deployment: %w", err)
+	}
+	return d, nil
+}
+
+func mountNewVolumesOnDeployment(k8sArgs K8sArguments, d *v1.Deployment, pvc *corev1.PersistentVolumeClaim, clientset *kubernetes.Clientset) (*v1.Deployment, error) {
+	d, err := clientset.AppsV1().Deployments(k8sArgs.Namespace).Get(context.TODO(), d.Name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("cannot get deployment: %w", err)
+	}
+	pvcFound := false
+	for k, v := range d.Spec.Template.Spec.Volumes {
+		if v.Name == k8sArgs.DeploymentVolumeName {
+			d.Spec.Template.Spec.Volumes[k].VolumeSource = corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: pvc.Name,
+				},
+			}
+			pvcFound = true
+			slog.Debug("updating pvc source", "pvcName", pvc.Name)
+		}
+	}
+	if !pvcFound {
+		return nil, fmt.Errorf("cannot update deployment, volume not found: %s", pvc.Name)
+	}
+
+	newReplicasCount := int32(1)
+	d.Spec.Replicas = &newReplicasCount
+	slog.Info("scaling deployment to 0", "deployment", d.Name, "namespace", d.Namespace)
+	d, err = clientset.AppsV1().Deployments(k8sArgs.Namespace).Update(context.TODO(), d, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("cannot update deployment, update failed: %w", err)
+	}
+	return d, nil
 }
 
 func createTargetPvc(k8sArgs K8sArguments, clientset *kubernetes.Clientset) (*corev1.PersistentVolumeClaim, error) {
@@ -235,7 +280,7 @@ func createTargetPvc(k8sArgs K8sArguments, clientset *kubernetes.Clientset) (*co
 	}
 	newpvc := corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      k8sArgs.Pvc + "-v2",
+			Name:      k8sArgs.PvcDst,
 			Namespace: k8sArgs.Namespace,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -286,7 +331,7 @@ func createTemporaryPod(k8sArgs K8sArguments, clientset *kubernetes.Clientset) (
 					Name: "source",
 					VolumeSource: corev1.VolumeSource{
 						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: k8sArgs.Pvc,
+							ClaimName: k8sArgs.PvcSrc,
 						},
 					},
 				},
@@ -294,7 +339,7 @@ func createTemporaryPod(k8sArgs K8sArguments, clientset *kubernetes.Clientset) (
 					Name: "destination",
 					VolumeSource: corev1.VolumeSource{
 						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: k8sArgs.Pvc + "-v2",
+							ClaimName: k8sArgs.PvcDst,
 						},
 					},
 				},
@@ -307,37 +352,3 @@ func createTemporaryPod(k8sArgs K8sArguments, clientset *kubernetes.Clientset) (
 	}
 	return newpod, nil
 }
-
-func waitTillRunning(ctx context.Context, clientset *kubernetes.Clientset, pod *corev1.Pod) error {
-	watch, err := clientset.CoreV1().Pods(pod.ObjectMeta.Namespace).Watch(ctx, metav1.ListOptions{})
-
-	if err != nil {
-		return fmt.Errorf("cannot wait till running: %w", err)
-	}
-	defer watch.Stop()
-
-	for {
-		select {
-		case event, ok := <-watch.ResultChan():
-			if !ok {
-				return fmt.Errorf("cannot wait till running: %w", err)
-			}
-			p, ok := event.Object.(*corev1.Pod)
-			if !ok {
-				slog.Error("unexpected type", "type", event.Type)
-				continue
-			}
-
-			if p.Status.Phase == corev1.PodRunning {
-				return nil
-			}
-
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-}
-
-//func getDeploymentsinNamespace(namespace string, clientset *kubernetes.Clientset) []Deployment
-
-// find what deployment is using pvc

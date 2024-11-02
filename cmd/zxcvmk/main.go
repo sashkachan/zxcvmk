@@ -93,11 +93,13 @@ func Execute() {
 	backupListCmd.Flags().StringArrayVar(&backupArguments.Paths, "filter-path", []string{}, "Specify the path filter (can be used multiple times)")
 	backupListCmd.Flags().StringVar(&backupArguments.Output, "output", "", "Output type")
 
-	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.Pvc, "pvc", "", "Specify the pvc to replant")
+	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.PvcSrc, "pvc-src", "", "Specify the pvc source")
+	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.PvcDst, "pvc-dst", "", "Specify the pvc target")
 	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.Namespace, "namespace", "", "Specify the namespace of the pvc to replant")
 	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.Deployment, "deployment", "", "Specify the deployment of the pvc to replant")
 	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.DestVolumeSize, "dst-size", "", "Specify the destination pvc size")
 	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.DestStorageClassName, "dst-storage-classname", "", "Specify the destination pvc classname")
+	k8sVolumeReplantCmd.Flags().StringVar(&replantArguments.DeploymentVolumeName, "deployment-volume-name", "", "Specify the deployment volume name to replace")
 	k8sVolumeReplantCmd.Flags().BoolVar(&replantArguments.DryRun, "dry-run", false, "dry-run")
 
 	err = k8sVolumeReplantCmd.MarkFlagRequired("dst-size")
@@ -110,7 +112,11 @@ func Execute() {
 		slog.Error("dst-storage-classname is not provided")
 		return
 	}
-
+	err = k8sVolumeReplantCmd.MarkFlagRequired("deployment-volume-name")
+	if err != nil {
+		slog.Error("deployment-volume-name is not provided")
+		return
+	}
 	_ = rootCmd.Execute()
 }
 
