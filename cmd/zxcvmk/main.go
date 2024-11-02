@@ -112,11 +112,11 @@ func Execute() {
 		slog.Error("dst-storage-classname is not provided")
 		return
 	}
-	err = k8sVolumeReplantCmd.MarkFlagRequired("deployment-volume-name")
-	if err != nil {
-		slog.Error("deployment-volume-name is not provided")
-		return
-	}
+	// err = k8sVolumeReplantCmd.MarkFlagRequired("deployment-volume-name")
+	// if err != nil {
+	// 	slog.Error("deployment-volume-name is not provided")
+	// 	return
+	// }
 	_ = rootCmd.Execute()
 }
 

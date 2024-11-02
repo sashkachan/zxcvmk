@@ -52,17 +52,25 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 		return
 	}
 
-	deployment, err := findPvcUseDeployment(k8sArguments, clientset)
-	if err != nil {
-		slog.Error("could not find deployment", "error", err)
-		return
-	}
-	slog.Debug("Deployment found", "deployment", deployment.Name, "spec", deployment.Spec)
+	var deployment *v1.Deployment
 
-	deployment, err = scaleDownDeployment(k8sArguments, deployment, clientset)
-	if err != nil {
-		slog.Error("could scale down deploymend", "error", err)
-		return
+	if k8sArguments.Deployment != "" {
+		deployment, err = findPvcUseDeployment(k8sArguments, clientset)
+		if err != nil {
+			slog.Error("could not find deployment", "error", err)
+			return
+		}
+		if deployment == nil {
+			slog.Info("could not find deployment, will only migrate volume")
+		} else {
+			slog.Info("Deployment found", "deployment", deployment.Name, "spec", deployment.Spec)
+
+			deployment, err = scaleDownDeployment(k8sArguments, deployment, clientset)
+			if err != nil {
+				slog.Error("could scale down deployment", "error", err)
+				return
+			}
+		}
 	}
 	slog.Info("creating temporary pod")
 	pod, err := createTemporaryPod(k8sArguments, clientset)
@@ -100,12 +108,13 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 		cleanupPvc(k8sArguments, pvc.Name, clientset)
 		return
 	}
-
-	deployment, err = mountNewVolumesOnDeployment(k8sArguments, deployment, pvc, clientset)
-	if err != nil {
-		slog.Error("cannot restore deployment to previous state with the new volume", "error", err)
-		cleanupPvc(k8sArguments, pvc.Name, clientset)
-		return
+	if deployment != nil {
+		deployment, err = mountNewVolumesOnDeployment(k8sArguments, deployment, pvc, clientset)
+		if err != nil {
+			slog.Error("cannot restore deployment to previous state with the new volume", "error", err)
+			cleanupPvc(k8sArguments, pvc.Name, clientset)
+			return
+		}
 	}
 	slog.Info("transfer complete")
 
