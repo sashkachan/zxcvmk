@@ -52,14 +52,14 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 		return
 	}
 
-	d, err := findPvcUseDeployment(k8sArguments, clientset)
+	deployment, err := findPvcUseDeployment(k8sArguments, clientset)
 	if err != nil {
 		slog.Error("could not find deployment", "error", err)
 		return
 	}
-	slog.Debug("Deployment found", "deployment", d.Name, "spec", d.Spec)
+	slog.Debug("Deployment found", "deployment", deployment.Name, "spec", deployment.Spec)
 
-	d, err = scaleDownDeployment(k8sArguments, d, clientset)
+	deployment, err = scaleDownDeployment(k8sArguments, deployment, clientset)
 	if err != nil {
 		slog.Error("could scale down deploymend", "error", err)
 		return
@@ -101,7 +101,7 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 		return
 	}
 
-	d, err = mountNewVolumesOnDeployment(k8sArguments, d, pvc, clientset)
+	deployment, err = mountNewVolumesOnDeployment(k8sArguments, deployment, pvc, clientset)
 	if err != nil {
 		slog.Error("cannot restore deployment to previous state with the new volume", "error", err)
 		cleanupPvc(k8sArguments, pvc.Name, clientset)
