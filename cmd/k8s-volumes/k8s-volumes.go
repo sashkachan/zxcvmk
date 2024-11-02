@@ -11,22 +11,25 @@ package k8svolumes
 // Attach the old depoyment to the new volume
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"time"
 	"zxcvmk/pkg/config"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"log/slog"
 
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/remotecommand"
 )
 
 type K8sArguments struct {
@@ -54,6 +57,8 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 	}
 	slog.Debug("Deployment found", "deployment", d.Name, "replicas", d.Spec.Replicas)
 
+	scaleDownDeployment(k8sArguments, d, clientset)
+
 	slog.Info("creating temporary pod")
 	pod, err := createTemporaryPod(k8sArguments, clientset)
 
@@ -70,10 +75,100 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 	}
 	defer cleanupPvc(k8sArguments, pvc.Name, clientset)
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		err := waitTillRunning(ctx, clientset, pod)
+		if err != nil {
+			slog.Error("cannot wait till running", "error", err)
+		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		phase, err := getPodStatusPhase(clientset, pod)
+		if err != nil {
+			slog.Error("cannot get pod status, timeout")
+			return
+		}
+		if phase == corev1.PodRunning {
+			slog.Debug("pod status is Running. continue.")
+		}
+	case <-ctx.Done():
+		slog.Error("cannot wait till running, timeout")
+		return
+	}
+
 	slog.Info("pod created", "pod", pod.Name, "mounts", pod.Spec.Containers[0].VolumeMounts)
 	slog.Info("pvc created", "pvc", pvc.Name, "mounts", pvc.Spec.VolumeName)
+
+	err = transferVolumeContents(clientset, pod)
+	if err != nil {
+		slog.Error("cannot transfer volume contents", "error", err)
+
+	}
 	time.Sleep(time.Duration(10) * time.Second)
 
+}
+
+func getPodStatusPhase(clientset *kubernetes.Clientset, pod *corev1.Pod) (corev1.PodPhase, error) {
+	podStatus, err := clientset.CoreV1().Pods(pod.ObjectMeta.Namespace).Get(context.TODO(), pod.ObjectMeta.Name, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("cannot rsync src to dst: %w", err)
+	}
+
+	return podStatus.Status.Phase, nil
+
+}
+
+func runCmdOnAPod(clientset *kubernetes.Clientset, pod *corev1.Pod, command []string) error {
+	kubeCfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		clientcmd.NewDefaultClientConfigLoadingRules(),
+		&clientcmd.ConfigOverrides{},
+	)
+	restCfg, err := kubeCfg.ClientConfig()
+	if err != nil {
+		return fmt.Errorf("cannot cmd src to dst: %w", err)
+	}
+	req := clientset.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(pod.ObjectMeta.Name).
+		Namespace(pod.ObjectMeta.Namespace).
+		SubResource("exec")
+
+	req.VersionedParams(&corev1.PodExecOptions{
+		Command: command,
+		Stdout:  true,
+		Stderr:  true,
+	}, runtime.NewParameterCodec(&runtime.Scheme{}))
+
+	exec, err := remotecommand.NewSPDYExecutor(restCfg, "POST", req.URL())
+	if err != nil {
+		return fmt.Errorf("cannot cmd src to dst: %w", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = exec.StreamWithContext(context.TODO(), remotecommand.StreamOptions{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	})
+
+	if err != nil {
+		return fmt.Errorf("cannot cmd src to dst: %w", err)
+	}
+
+	slog.Debug("cmd output", "output", string(stdout.Bytes()))
+	return nil
+}
+
+func transferVolumeContents(clientset *kubernetes.Clientset, pod *corev1.Pod) error {
+	err := runCmdOnAPod(clientset, pod, []string{"apk", "add", "--no-cache", "rsync"})
+	if err != nil {
+		return err
+	}
+	return runCmdOnAPod(clientset, pod, []string{"rsync", "-a", "--progress", "/source", "/destination"})
 }
 
 func cleanupPod(args K8sArguments, podName string, clientset *kubernetes.Clientset) {
@@ -172,16 +267,16 @@ func createTemporaryPod(k8sArgs K8sArguments, clientset *kubernetes.Clientset) (
 			Containers: []corev1.Container{
 				{
 					Name:    "transfer-container",
-					Image:   "ubuntu",
-					Command: []string{"/bin/bash", "-c", "sleep 3600"},
+					Image:   "alpine:latest",
+					Command: []string{"/bin/sh", "-c", "while :; do sleep 2073600; done"},
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:      "source",
 							MountPath: "/source",
 						},
 						{
-							Name:      "dst",
-							MountPath: "/dst",
+							Name:      "destination",
+							MountPath: "/destination",
 						},
 					},
 				},
@@ -196,7 +291,7 @@ func createTemporaryPod(k8sArgs K8sArguments, clientset *kubernetes.Clientset) (
 					},
 				},
 				{
-					Name: "dst",
+					Name: "destination",
 					VolumeSource: corev1.VolumeSource{
 						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 							ClaimName: k8sArgs.Pvc + "-v2",
@@ -211,6 +306,36 @@ func createTemporaryPod(k8sArgs K8sArguments, clientset *kubernetes.Clientset) (
 		return nil, fmt.Errorf("cannot create pod: %w", err)
 	}
 	return newpod, nil
+}
+
+func waitTillRunning(ctx context.Context, clientset *kubernetes.Clientset, pod *corev1.Pod) error {
+	watch, err := clientset.CoreV1().Pods(pod.ObjectMeta.Namespace).Watch(ctx, metav1.ListOptions{})
+
+	if err != nil {
+		return fmt.Errorf("cannot wait till running: %w", err)
+	}
+	defer watch.Stop()
+
+	for {
+		select {
+		case event, ok := <-watch.ResultChan():
+			if !ok {
+				return fmt.Errorf("cannot wait till running: %w", err)
+			}
+			p, ok := event.Object.(*corev1.Pod)
+			if !ok {
+				slog.Error("unexpected type", "type", event.Type)
+				continue
+			}
+
+			if p.Status.Phase == corev1.PodRunning {
+				return nil
+			}
+
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 //func getDeploymentsinNamespace(namespace string, clientset *kubernetes.Clientset) []Deployment
