@@ -108,7 +108,7 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 		return
 	}
 	if deployment != nil {
-		deployment, err = mountNewVolumesOnDeployment(k8sArguments, deployment, pvc, clientset)
+		_, err = mountNewVolumesOnDeployment(k8sArguments, deployment, pvc, clientset)
 		if err != nil {
 			slog.Error("cannot restore deployment to previous state with the new volume", "error", err)
 			cleanupPvc(k8sArguments, pvc.Name, clientset)
@@ -120,7 +120,7 @@ func Replant(cfg *config.Config, k8sArguments K8sArguments) {
 
 func getPodStatusPhase(clientset *kubernetes.Clientset, pod *corev1.Pod) (corev1.PodPhase, error) {
 	for attempts := 0; attempts < 20; attempts++ {
-		podStatus, err := clientset.CoreV1().Pods(pod.ObjectMeta.Namespace).Get(context.TODO(), pod.ObjectMeta.Name, metav1.GetOptions{})
+		podStatus, err := clientset.CoreV1().Pods(pod.ObjectMeta.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 		if err != nil {
 			return "", fmt.Errorf("cannot get pod status phase: %w", err)
 		}
@@ -215,11 +215,6 @@ func getClientSet() (*kubernetes.Clientset, error) {
 
 func findPvcUseDeployment(k8sArgs K8sArguments, clientset *kubernetes.Clientset) (*v1.Deployment, error) {
 	slog.Info("Namespace", "ns", k8sArgs.Namespace)
-	// pvc, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(context.TODO(), pvcName, metav1.GetOptions{})
-	// if err != nil {
-	// 	return nil, fmt.Errorf("cannot get pvc %s: %w", k8sArgs.Pvc, err)
-	// }
-
 	deployments, err := clientset.AppsV1().Deployments(k8sArgs.Namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("cannot get deployment %s: %w", k8sArgs.PvcSrc, err)

@@ -2,12 +2,11 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"zxcvmk/cmd/backup"
 	k8svolumes "zxcvmk/cmd/k8s-volumes"
 	"zxcvmk/pkg/config"
-
-	"log/slog"
 
 	"github.com/spf13/cobra"
 )
@@ -18,20 +17,20 @@ func Execute() {
 	var debugLevel bool
 	// get config location from env
 	config_location := os.Getenv("ZXCVMK_CONFIG")
-	var defaultConfig = "config.yaml"
+	defaultConfig := "config.yaml"
 	if config_location == "" {
 		config_location = defaultConfig
 	}
-	var cfg, err = config.LoadConfig(config_location)
+	cfg, err := config.LoadConfig(config_location)
 
-	var rootCmd = &cobra.Command{
+	rootCmd := &cobra.Command{
 		Run: func(cmd *cobra.Command, args []string) {
 			SetupLogger(debugLevel)
 			fmt.Println("This is a root command. It does nothing.")
 		},
 	}
 
-	var backupCmd = &cobra.Command{
+	backupCmd := &cobra.Command{
 		Use: "backup",
 		Run: func(cmd *cobra.Command, args []string) {
 			SetupLogger(debugLevel)
@@ -39,7 +38,7 @@ func Execute() {
 		},
 	}
 
-	var backupRestoreCmd = &cobra.Command{
+	backupRestoreCmd := &cobra.Command{
 		Use: "restore",
 		Run: func(cmd *cobra.Command, args []string) {
 			SetupLogger(debugLevel)
@@ -47,7 +46,7 @@ func Execute() {
 		},
 	}
 
-	var backupListCmd = &cobra.Command{
+	backupListCmd := &cobra.Command{
 		Use: "list",
 		Run: func(cmd *cobra.Command, args []string) {
 			SetupLogger(debugLevel)
@@ -55,14 +54,14 @@ func Execute() {
 		},
 	}
 
-	var k8sCmd = &cobra.Command{
+	k8sCmd := &cobra.Command{
 		Use: "k8s",
 		Run: func(cmd *cobra.Command, args []string) {
 			SetupLogger(debugLevel)
 		},
 	}
 
-	var k8sVolumeReplantCmd = &cobra.Command{
+	k8sVolumeReplantCmd := &cobra.Command{
 		Use: "k8s-volume-replant",
 		Run: func(cmd *cobra.Command, args []string) {
 			SetupLogger(debugLevel)
@@ -123,7 +122,7 @@ func Execute() {
 func SetupLogger(debugLevel bool) {
 	var handlerOptions slog.HandlerOptions
 	var slogLevel slog.Level
-	if debugLevel == true {
+	if debugLevel {
 		slogLevel = slog.LevelDebug
 	} else {
 		slogLevel = slog.LevelInfo
