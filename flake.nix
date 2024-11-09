@@ -4,29 +4,13 @@
   inputs.flake-utils.url = "github:numtide/flake-utils";
   inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
-  outputs =
-    {
-      self,
-      nixpkgs,
-      flake-utils,
-    }:
-    flake-utils.lib.eachDefaultSystem (
-      system:
-      let
-        pkgs = nixpkgs.legacyPackages.${system};
-      in
-      {
-        devShells.default =
-          with pkgs;
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let pkgs = nixpkgs.legacyPackages.${system};
+      in {
+        devShells.default = with pkgs;
           mkShell {
-            buildInputs = [
-              gopls
-              delve
-              go
-              gore
-              go-tools
-              golangci-lint
-            ];
+            buildInputs = [ gopls delve go gore go-tools golangci-lint ];
             hardeningDisable = [ "all" ];
             shellHook = ''
               echo Welcome to zxcvmk devshell!
@@ -40,8 +24,7 @@
           src = ./.;
           meta.mainProgram = "cmd/zxcvmk";
 
-          vendorHash = "sha256-073CSOz6VUdrXdbeWiR0qoWCpr9qcRtbcHd6PxMb1AU=";
+          vendorHash = pkgs.lib.fakeHash;
         };
-      }
-    );
+      });
 }
