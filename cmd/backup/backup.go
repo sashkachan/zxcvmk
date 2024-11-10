@@ -55,7 +55,7 @@ func rsyncPaths(from string, paths []string) error {
 		cmd.Dir = from
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			slog.Error("error rsync paths %s to %s: %s", from, path, output)
+			slog.Error("error rsync paths", "from", from, "path", path, "output", output)
 			return err
 		}
 	}
@@ -95,7 +95,7 @@ func Restore(cfg *config.Config, backupArguments BackupArguments) {
 		}
 		err = backupProviderImpl.RestoreSnapshot(snapshot.ID, target, backupArguments.Paths)
 		if err != nil {
-			slog.Error("restore failed: %s", err.Error())
+			slog.Error("restore failed", "error", err.Error())
 			return
 		}
 
