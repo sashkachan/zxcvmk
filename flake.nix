@@ -24,7 +24,7 @@
           src = ./.;
           meta.mainProgram = "cmd/zxcvmk";
 
-          vendorHash = pkgs.lib.fakeHash;
+          vendorHash = "sha256-TcKvTdtKKI7K2dni3sZhVrVI5Slq+CV9BXGTpd8i1PA=";
         };
       });
 }
