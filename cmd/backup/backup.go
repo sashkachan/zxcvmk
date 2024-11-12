@@ -90,7 +90,7 @@ func Restore(cfg *config.Config, backupArguments BackupArguments) {
 			_ = deleteSnapshotMountTarget(target)
 		}()
 		if err != nil {
-			slog.Error("Snapshot target directory could not be created", err)
+			slog.Error("Snapshot target directory could not be created", "error", err)
 			return
 		}
 		err = backupProviderImpl.RestoreSnapshot(snapshot.ID, target, backupArguments.Paths)
@@ -142,6 +142,7 @@ func findSnapshotByID(snapshots []*providers.Snapshot, id string) (*providers.Sn
 func createSnapshotMountTarget() (string, error) {
 	tmpdir := os.TempDir()
 	target_tmpdir, err := os.MkdirTemp(tmpdir, "snapshot-")
+
 	if err != nil {
 		return "", err
 	}
