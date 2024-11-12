@@ -105,7 +105,7 @@ func Restore(cfg *config.Config, backupArguments BackupArguments) {
 		}()
 		err = rsyncPaths(target, backupArguments.Paths)
 		if err != nil {
-			slog.Error("failed to rsync contents: %s", err)
+			slog.Error("failed to rsync contents", "error", err)
 		}
 	} else {
 		slog.Error("Snapshot not found")
