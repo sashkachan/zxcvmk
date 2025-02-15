@@ -1,30 +1,39 @@
 {
   description = "";
 
-  inputs.flake-utils.url = "github:numtide/flake-utils";
+  inputs.utils.url = "github:numtide/flake-utils";
   inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+  inputs.gomod2nix = {
+    url = "github:tweag/gomod2nix";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let pkgs = nixpkgs.legacyPackages.${system};
+  outputs = { self, nixpkgs, utils, gomod2nix }: 
+    utils.lib.eachDefaultSystem (system:
+      let pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ gomod2nix.overlays.default ];
+      };
+
       in {
         devShells.default = with pkgs;
           mkShell {
-            buildInputs = [ gopls delve go gore go-tools golangci-lint ];
-            hardeningDisable = [ "all" ];
-            shellHook = ''
-              echo Welcome to zxcvmk devshell!
-              echo To build and run the project:
-              echo "go run cmd/main.go"
-            '';
+            buildInputs = [
+              gopls 
+              delve 
+              go 
+              gore 
+              go-tools 
+              golangci-lint 
+              gomod2nix.packages.${system}.default
+            ];
           };
-        packages.default = pkgs.buildGoModule {
+
+        packages.default = pkgs.buildGoApplication rec {
           pname = "zxcvmk";
           version = "1.0.0";
           src = ./.;
           meta.mainProgram = "cmd/zxcvmk";
-
-          vendorHash = "sha256-ocYvYJQf8Sl4hkIKc74FcXidIT6Ryun4gYAQWCuIVT8=";
         };
       });
 }
