@@ -33,7 +33,10 @@
           pname = "zxcvmk";
           version = "1.0.0";
           src = ./.;
-          meta.mainProgram = "cmd/zxcvmk";
+          modules = ./gomod2nix.toml;
+          meta = {
+            mainProgram = "cmd/zxcvmk";
+          };
         };
       });
 }
