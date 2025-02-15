@@ -17,7 +17,7 @@ func Execute() {
 	var debugLevel bool
 	// get config location from env
 	config_location := os.Getenv("ZXCVMK_CONFIG")
-	defaultConfig := "config.yaml"
+	defaultConfig := os.Getenv("HOME") + "/.config/zxcvmk/config.yaml"
 	if config_location == "" {
 		config_location = defaultConfig
 	}
